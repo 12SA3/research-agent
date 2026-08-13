@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "front-debugger": {
+      "source": "987818136/tss-skill",
+      "sourceType": "github",
+      "skillPath": "skills/front-debugger/SKILL.md",
+      "computedHash": "147be13874ee21f74096301e5e97cf72ce96c38ca7bb14628f31471afbc90014"
+    },
+    "txt-to-md": {
+      "source": "987818136/tss-skill",
+      "sourceType": "github",
+      "skillPath": "skills/txt-to-md/SKILL.md",
+      "computedHash": "64862a64eb2cc606874942bd5e7783c17e343f25ab28a459a02d6bfd094244d2"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "6337038fe1fe6bbe1b9f252ab678ee575859190bab6f0f246f4061824eb40875"
+    },
+    "vue-rules": {
+      "source": "987818136/tss-skill",
+      "sourceType": "github",
+      "skillPath": "skills/vue-rules/SKILL.md",
+      "computedHash": "840299c18d71b20f17f4973a9d1b5f911e483cf0fa9544299b6bb953552f5219"
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "f3bc47f890f42a44db1007ab390709ec368e4b8c089baee6b0007182236ac474"
+    }
+  }
+}
