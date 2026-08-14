@@ -145,7 +145,7 @@ function ResearchWorkspace({ onModeChange }) {
   }[state.status]), [state.status]);
 
   return (
-    <main className="research-shell">
+    <main id="research-workspace-content" className="research-shell" tabIndex="-1">
       <header className="mobile-header">
         <button className="icon-control" onClick={() => setLeftOpen(true)} aria-label="打开文档库"><Menu size={20} /></button>
         <WorkspaceModeSwitch mode="research" onChange={onModeChange} compact />
@@ -154,7 +154,7 @@ function ResearchWorkspace({ onModeChange }) {
 
       <aside className={`document-panel ${leftOpen ? "is-open" : ""}`} aria-label="知识库文档">
         <div className="panel-heading">
-          <div><span className="eyebrow">Knowledge base</span><h1>研究资料库</h1></div>
+          <div><span className="eyebrow">Workspace</span><h1>研究资料库</h1></div>
           <button className="mobile-close icon-control" onClick={() => setLeftOpen(false)} aria-label="关闭文档库"><X size={18} /></button>
         </div>
         <input ref={fileInputRef} hidden type="file" accept=".pdf,.md,.markdown,.txt" multiple onChange={handleFiles} />
@@ -179,12 +179,12 @@ function ResearchWorkspace({ onModeChange }) {
             );
           })}
         </div>
-        <div className="provider-note"><span className="status-dot" /> DeepSeek Agent · 讯飞 RAG</div>
+        <div className="provider-note"><span className="status-dot" /> DeepSeek · 讯飞语义检索</div>
       </aside>
 
       <section className="research-main">
         <div className="workspace-topbar">
-          <div><span className="eyebrow">AI knowledge researcher</span><h2>知识研究工作台</h2></div>
+          <div><span className="eyebrow">Research workspace</span><h2>知识研究工作台</h2></div>
           <WorkspaceModeSwitch mode="research" onChange={onModeChange} />
           <div className={`run-status status-${state.status}`}><span />{statusLabel}</div>
         </div>
@@ -193,9 +193,9 @@ function ResearchWorkspace({ onModeChange }) {
           {state.status === "idle" && !state.plan ? (
             <section className="hero-state">
               <div className="hero-mark"><BookOpen size={30} /></div>
-              <span className="eyebrow">Grounded answers, visible process</span>
-              <h3>让 Agent 带着证据完成研究</h3>
-              <p>选择资料并描述研究目标。Agent 会先制定计划，再检索、评估证据并生成可追溯的报告。</p>
+              <span className="eyebrow">基于资料，保留出处</span>
+              <h3>从资料中整理出有依据的结论</h3>
+              <p>选择资料并输入问题。系统会先整理研究步骤，再检索原文、核对证据并生成可追溯的报告。</p>
               <div className="example-grid">
                 {["对比这些 JD 的共同技能要求，并给出准备优先级", "总结文档中的核心方案、风险与待确认事项", "从多份资料中梳理同一主题的观点差异"].map((example) => (
                   <button key={example} onClick={() => setQuestion(example)}>{example}<ChevronRight size={16} /></button>
@@ -212,8 +212,8 @@ function ResearchWorkspace({ onModeChange }) {
                   <article className="plan-card" key={step.id}>
                     <span className="step-number">{String(index + 1).padStart(2, "0")}</span>
                     <div>
-                      <input aria-label={`步骤 ${index + 1} 标题`} value={step.title} disabled={state.status === "running" || state.status === "completed"} onChange={(event) => updateStep(index, "title", event.target.value)} />
-                      <textarea aria-label={`步骤 ${index + 1} 检索问题`} value={step.query} disabled={state.status === "running" || state.status === "completed"} onChange={(event) => updateStep(index, "query", event.target.value)} />
+                      <input name={`plan-step-${index + 1}-title`} autoComplete="off" aria-label={`步骤 ${index + 1} 标题`} value={step.title} disabled={state.status === "running" || state.status === "completed"} onChange={(event) => updateStep(index, "title", event.target.value)} />
+                      <textarea name={`plan-step-${index + 1}-query`} autoComplete="off" aria-label={`步骤 ${index + 1} 检索问题`} value={step.query} disabled={state.status === "running" || state.status === "completed"} onChange={(event) => updateStep(index, "query", event.target.value)} />
                     </div>
                   </article>
                 ))}
@@ -237,14 +237,14 @@ function ResearchWorkspace({ onModeChange }) {
         <div className="research-composer">
           <label htmlFor="research-question">研究问题</label>
           <div className="composer-box">
-            <textarea id="research-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="例如：对比这些资料的核心观点，并给出有依据的结论…" rows={2} disabled={state.status === "running"} />
+            <textarea id="research-question" name="research-question" autoComplete="off" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="例如：对比这些资料的核心观点，并给出有依据的结论…" rows={2} disabled={state.status === "running"} />
             <div className="composer-footer"><span><FileText size={14} />已选择 {selectedCount} 份资料</span>{state.status === "running" ? <button className="stop-button" onClick={cancelRun}><Square size={15} fill="currentColor" />中止</button> : <button className="primary-button compact" onClick={createPlan} disabled={!question.trim() || state.status === "planning"}>{state.status === "planning" ? <span className="spinner" /> : <Plus size={17} />}生成计划</button>}</div>
           </div>
         </div>
       </section>
 
       <aside className={`trace-panel ${rightOpen ? "is-open" : ""}`} aria-label="Agent 执行时间线">
-        <div className="panel-heading"><div><span className="eyebrow">Agent trace</span><h2>执行时间线</h2></div><button className="mobile-close icon-control" onClick={() => setRightOpen(false)} aria-label="关闭执行时间线"><X size={18} /></button></div>
+        <div className="panel-heading"><div><span className="eyebrow">Research progress</span><h2>研究进度</h2></div><button className="mobile-close icon-control" onClick={() => setRightOpen(false)} aria-label="关闭执行时间线"><X size={18} /></button></div>
         <div className="timeline" aria-live="polite">
           {state.timeline.length === 0 ? <div className="empty-card trace-empty"><Search size={24} /><p>等待研究开始</p><span>计划、检索和证据状态将在这里实时呈现</span></div> : state.timeline.map((item) => (
             <article key={item.id} className={`timeline-item ${item.status}`}><span className="timeline-node">{item.status === "completed" ? <Check size={12} /> : <span />}</span><div><strong>{item.title}</strong>{item.detail && <p>{item.detail}</p>}</div></article>

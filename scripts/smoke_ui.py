@@ -28,6 +28,7 @@ with sync_playwright() as playwright:
     desktop.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
     desktop.route("**/api/chat", mock_chat)
     desktop.goto("http://127.0.0.1:5174", wait_until="networkidle")
+    assert desktop.evaluate("getComputedStyle(document.documentElement).colorScheme") == "light"
 
     desktop.get_by_role("heading", name="知识研究工作台").wait_for()
     assert desktop.get_by_role("button", name="导入 PDF / MD / TXT").is_visible()
@@ -37,6 +38,7 @@ with sync_playwright() as playwright:
     desktop.screenshot(path=str(artifacts / "desktop-research.png"), full_page=True)
 
     desktop.get_by_role("tab", name="普通对话").click()
+    assert desktop.url.endswith("#chat")
     desktop.get_by_role("heading", name="普通对话").wait_for()
     desktop.locator("#chat-input").fill("你好，请介绍一下自己")
     desktop.get_by_role("button", name="发送消息").click()
@@ -44,6 +46,7 @@ with sync_playwright() as playwright:
     desktop.screenshot(path=str(artifacts / "desktop-chat.png"), full_page=True)
 
     desktop.get_by_role("tab", name="知识研究").click()
+    assert desktop.url.endswith("#research")
     assert "共同技能要求" in desktop.get_by_label("研究问题").input_value()
     desktop.get_by_role("tab", name="普通对话").click()
     assert desktop.get_by_text("这是模拟的流式回复。").is_visible()
@@ -67,9 +70,19 @@ with sync_playwright() as playwright:
     assert mobile.get_by_role("button", name="打开文档库").is_visible()
     mobile.get_by_role("button", name="打开执行时间线").click()
     mobile.wait_for_timeout(300)
-    assert mobile.get_by_role("heading", name="执行时间线").is_visible()
+    assert mobile.get_by_role("heading", name="研究进度").is_visible()
     mobile.screenshot(path=str(artifacts / "mobile-research.png"), full_page=True)
     assert mobile.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+
+    landscape = context.new_page()
+    landscape.set_viewport_size({"width": 812, "height": 375})
+    landscape.emulate_media(reduced_motion="reduce")
+    landscape.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
+    landscape.route("**/api/chat", mock_chat)
+    landscape.goto("http://127.0.0.1:5174/#chat", wait_until="networkidle")
+    assert landscape.get_by_role("heading", name="普通对话").is_visible()
+    assert landscape.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    landscape.screenshot(path=str(artifacts / "landscape-chat.png"), full_page=True)
 
     context.close()
     browser.close()

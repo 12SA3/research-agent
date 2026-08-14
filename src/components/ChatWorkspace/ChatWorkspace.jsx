@@ -6,7 +6,6 @@ import {
   Menu,
   MessageCircle,
   Plus,
-  Sparkles,
   Square,
   Trash2,
   UserRound,
@@ -276,7 +275,7 @@ function ChatWorkspace({ onModeChange }) {
   ];
 
   return (
-    <main className="chat-shell">
+    <main id="chat-workspace-content" className="chat-shell" tabIndex="-1">
       <header className="chat-mobile-header">
         <button className="icon-control" type="button" onClick={() => setSidebarOpen(true)} aria-label="打开对话列表"><Menu size={20} /></button>
         <WorkspaceModeSwitch mode="chat" onChange={onModeChange} compact />
@@ -285,7 +284,7 @@ function ChatWorkspace({ onModeChange }) {
 
       <aside className={`chat-sidebar ${sidebarOpen ? "is-open" : ""}`} aria-label="对话列表">
         <div className="chat-brand">
-          <div><span className="eyebrow">InkMind</span><h1>普通对话</h1></div>
+          <div><span className="eyebrow">InkMind workspace</span><h1>普通对话</h1></div>
           <button className="chat-sidebar-close icon-control" type="button" onClick={() => setSidebarOpen(false)} aria-label="关闭对话列表"><X size={18} /></button>
         </div>
         <button className="new-chat-button" type="button" onClick={startNewChat} disabled={isGenerating}>
@@ -307,9 +306,9 @@ function ChatWorkspace({ onModeChange }) {
 
       <section className="chat-main">
         <div className="chat-topbar">
-          <div className="chat-title"><span className="eyebrow">General conversation</span><h2>{activeSession?.title || "新对话"}</h2></div>
+          <div className="chat-title"><span className="eyebrow">Conversation</span><h2>{activeSession?.title || "新对话"}</h2></div>
           <WorkspaceModeSwitch mode="chat" onChange={onModeChange} />
-          <div className="chat-model"><Sparkles size={14} />DeepSeek</div>
+          <div className="chat-model"><Bot size={14} />DeepSeek</div>
         </div>
 
         <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
@@ -320,9 +319,9 @@ function ChatWorkspace({ onModeChange }) {
             </div>
           ) : (
             <section className="chat-empty-state">
-              <div className="chat-empty-mark"><Sparkles size={28} /></div>
-              <span className="eyebrow">Fast answers, open conversation</span>
-              <h3>今天想聊些什么？</h3>
+              <div className="chat-empty-mark"><MessageCircle size={26} /></div>
+              <span className="eyebrow">普通对话</span>
+              <h3>有什么想一起梳理的？</h3>
               <p>适合快速问答、代码解释和头脑风暴。需要基于私有资料完成复杂任务时，请切换到知识研究模式。</p>
               <div className="chat-example-grid">
                 {examples.map((example) => <button type="button" key={example} onClick={() => { setInput(example); textareaRef.current?.focus(); }}>{example}</button>)}
@@ -342,6 +341,8 @@ function ChatWorkspace({ onModeChange }) {
             <label htmlFor="chat-input">发送消息</label>
             <textarea
               id="chat-input"
+              name="chat-message"
+              autoComplete="off"
               ref={textareaRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
