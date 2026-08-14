@@ -1,287 +1,112 @@
-# wzh-AI
+# InkMind Research — 可观测知识研究 Agent
 
-一个基于 React + Node.js 构建的现代化 AI 对话应用，采用流式输出技术，提供流畅的实时对话体验。
+一个面向多文档研究场景的 AI Agent 工作台。用户导入 PDF、Markdown 或 TXT 后，系统会生成可编辑研究计划，通过工具调用检索知识库，并流式生成带原文引用的结构化报告。
 
-## 功能特点
+## 核心能力
 
-- ✨ 简洁美观的用户界面
-- 💬 实时 AI 对话功能
-- 🌊 流式输出（Streaming Response）- 逐字显示 AI 回复
-- ⏸️ 支持中断生成
-- 🎙️ 语音输入支持
-- 📜 智能滚动 - 用户查看历史时自动暂停滚动
-- 🎯 预设问题卡片 - 快速开始对话
-- 📱 响应式设计，适配各种设备
+- **服务端 Agent 编排**：DeepSeek 负责 Planner、原生 Function Calling、证据评估与报告生成，浏览器只消费类型化事件。
+- **多阶段 RAG**：讯飞 Embedding → LanceDB Top-20 向量召回 → 讯飞 Rerank Top-5，精排失败自动降级。
+- **可追溯引用**：每条证据保留文档、页码、chunk ID、向量分数和精排分数，可在前端查看原文。
+- **可观测执行过程**：研究步骤、检索状态、Citation 和文本增量通过 SSE 实时同步。
+- **Human-in-the-loop**：模型先生成 2–4 步计划，用户确认或编辑后才执行。
+- **安全边界**：最多 6 次检索、一次补充检索轮次、90 秒超时、Zod 参数校验及主动中止。
 
-## 技术栈
+## 架构
 
-### 前端
-
-- **框架**: React 18.2.0
-- **构建工具**: Vite 5.2.8
-- **状态管理**: React Context API
-- **样式**: 自定义 CSS
-
-### 后端
-
-- **运行时**: Node.js
-- **HTTP 服务器**: 原生 http/https 模块
-- **AI 服务**: 讯飞星火 MaaS API
-
-## 核心技术方案
-
-### 1. 流式解析层
-
-- 使用 `fetch + ReadableStream` 接收流式数据
-- 使用 `TextDecoder('utf-8', { stream: true })` 进行增量解码
-- 双缓冲区设计：SSE 解析缓冲区 + 渲染缓冲区
-- 节奏控制机制：每 50ms 从缓冲区 flush 8 个字符
-- 支持 AbortController 随时中断生成
-
-### 2. 消息状态管理层
-
-- 管理消息列表状态
-- 支持生成状态管理（generating/completed/aborted/failed）
-- 智能滚动策略：用户滚动时暂停自动滚动，1 秒后恢复
-- 作为唯一事实来源
-
-### 3. 渲染与交互层
-
-- 消息内容展示
-- 自动滚动策略
-- 输入框与中断按钮交互
-- 不感知流式细节，只消费已节奏化处理的文本增量
-
-### 数据流路径
-
+```mermaid
+flowchart LR
+  UI["React 研究工作区"] -->|"计划确认 / SSE"| API["Node.js + Express"]
+  API --> DS["DeepSeek Chat API\nPlanner / Tool Calls / Report"]
+  API --> XF["讯飞 Embedding + Rerank"]
+  API --> LD["LanceDB research_chunks_v1"]
+  DOC["PDF / MD / TXT"] --> API
+  LD -->|"带页码 Citation"| API
+  API -->|"类型化 ResearchEvent"| UI
 ```
-用户输入 → 前端 POST 请求 → 后端转发到讯飞星火 API → 流式返回（SSE）
-→ 后端 pipe 转发 → 前端 ReadableStream → TextDecoder 增量解码
-→ SSE 数据帧解析 → 写入 renderBuffer → 定时 flush（50ms 间隔）
-→ 更新消息状态 → 触发视图更新 → 智能滚动 → 用户看到流式输出
-```
+
+关键设计：生成模型、Embedding 和 Reranker 通过 Provider 接口解耦，业务逻辑不绑定单一供应商；旧的 256 维哈希向量表不会与新语义向量表混用。
 
 ## 快速开始
 
-### 1. 克隆仓库
-
-```bash
-git clone https://github.com/gulugulu33/wzh-AI.git
-cd wzh-AI
-```
-
-### 2. 安装依赖
+要求 Node.js 24+（PDF.js 6 的运行时要求）。
 
 ```bash
 npm install
+copy .env.example .env
 ```
 
-### 3. 配置环境变量
-
-在项目根目录创建 `.env` 文件：
+在 `.env` 中填写：
 
 ```env
-XUNFEI_API_KEY=your_xunfei_api_key_here
+DEEPSEEK_API_KEY=你的 DeepSeek Key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+
+XUNFEI_API_KEY=你的讯飞 Key
+XUNFEI_BASE_URL=https://maas-api.cn-huabei-1.xf-yun.com/v2
+XUNFEI_EMBEDDING_MODEL=控制台中的 Embedding 服务模型 ID
+XUNFEI_RERANK_MODEL=控制台中的 Rerank 服务模型 ID
+
 PORT=3001
 ```
 
-获取讯飞星火 API Key：
-
-1. 访问 [讯飞开放平台](https://maas.xfyun.cn/modelService)
-2. 注册账号并创建应用
-3. 获取 API Key
-
-### 4. 启动后端服务器
+分别启动后端和前端：
 
 ```bash
 npm run server
-```
-
-后端服务器将在 http://localhost:3001 启动。
-
-### 5. 启动前端开发服务器
-
-```bash
 npm run dev
 ```
 
-前端应用将在 http://localhost:5173/ 启动。
+浏览器打开 `http://localhost:5173`。上传文档会调用真实 Embedding 并写入 `data/research-v1`；该目录和密钥均不会提交到 Git。
 
-### 6. 构建生产版本
+如果 3001 端口仍运行旧版 `node server.js`，请先在原终端按 `Ctrl+C` 停止，再执行新的 `npm run server`；新版 `/health` 会返回 `service: "knowledge-research-agent"`。
+
+## API
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/health` | 服务与 Provider 配置状态 |
+| POST | `/api/documents` | multipart 上传并建立索引，字段名为 `files` |
+| GET | `/api/documents` | 获取文档与索引状态 |
+| DELETE | `/api/documents/:id` | 删除文档及向量 |
+| POST | `/api/research/plans` | 生成可编辑研究计划 |
+| POST | `/api/research/runs` | 确认计划并启动 SSE 研究任务 |
+| POST | `/api/research/runs/:runId/cancel` | 中止研究任务 |
+| GET | `/api/knowledge/search?q=` | 只读检索与评测接口 |
+| POST | `/api/chat` | 保留的普通 DeepSeek 流式对话接口 |
+
+## ResearchEvent
+
+每个事件都包含 `runId`、递增 `sequence` 和时间戳。前端按运行 ID 隔离，并用 sequence 排序去重。
+
+```text
+run.started → plan.confirmed → step.started
+→ tool.started → citation.collected → tool.completed
+→ step.completed → text.delta* → run.completed
+```
+
+失败路径为 `run.failed`，主动中止或超时为 `run.cancelled`。UI 不展示模型内部思维链，只呈现计划、工具输入摘要、结果和来源。
+
+## 工程验证
 
 ```bash
+npm run typecheck
+npm run lint
+npm test
 npm run build
 ```
 
-构建产物将生成在 `dist` 目录中。
+RAG 评测集位于 `evals/rag-cases.json`。导入匹配的评测资料并启动服务后运行：
 
-## 项目结构
-
-```
-wzh-AI/
-├── public/                    # 静态资源
-├── src/
-│   ├── assets/               # 图片和图标等资源
-│   │   ├── assets.js        # 资源导出
-│   │   └── *.png           # 图标文件
-│   ├── components/           # React 组件
-│   │   ├── Main/           # 主界面组件
-│   │   │   ├── Main.jsx    # 主界面逻辑
-│   │   │   └── Main.css    # 主界面样式
-│   │   └── SideBar/       # 侧边栏组件
-│   ├── services/           # 服务层
-│   │   └── streamParser.js # 流式解析器
-│   ├── context/            # React Context
-│   │   └── Context.jsx     # 全局状态管理
-│   ├── App.jsx            # 应用入口组件
-│   ├── index.css          # 全局样式
-│   └── main.jsx           # 应用入口文件
-├── server.js             # Node.js 后端服务器
-├── .env                 # 环境变量配置
-├── index.html            # HTML 模板
-├── package.json          # 项目配置
-└── vite.config.js        # Vite 配置
+```bash
+npm run eval:rag
 ```
 
-## 使用说明
+脚本输出 Recall@5、MRR 和 P95 检索延迟。简历中应只使用该脚本实际产生的指标，不使用未经复现的“100% 准确率”。
 
-### 基本聊天
+## 项目取舍
 
-1. 在输入框中输入问题或指令
-2. 按回车键或点击发送按钮
-3. AI 回复会以流式方式逐字显示
-
-### 使用预设问题
-
-点击首页的预设问题卡片，快速开始对话：
-
-- 建议一些即将自驾游时可以去的美丽景点
-- 简要总结一下"城市规划"这个概念
-- 为我们的团队拓展活动集思广益
-- 提升以下代码的可读性
-
-### 中断生成
-
-在 AI 生成回复时，点击发送按钮（变为停止图标）即可中断生成。
-
-### 语音输入
-
-1. 点击麦克风图标
-2. 开始说话
-3. 语音识别完成后，系统会自动发送并获取回复
-
-### 智能滚动
-
-- 默认情况下，对话会自动滚动到底部
-- 当你向上滚动查看历史消息时，自动滚动会暂停
-- 1 秒后恢复自动滚动
-
-## 核心设计原则
-
-### 1. 逐 token 可感知渲染
-
-- 通过节奏控制，用户看到"正在逐步输出"的效果
-- 避免网络抖动导致的跳变式刷新
-
-### 2. 渲染节奏可控
-
-- 数据接收节奏：网络和模型输出（不可控）
-- 渲染节奏：每 50ms 固定间隔（可控）
-- 两者完全解耦
-
-### 3. 中断优先级最高
-
-- 用户随时可以点击停止按钮
-- AbortController 立即中断 fetch 请求
-- flush 所有剩余内容后停止
-
-### 4. 滚动跟随优化
-
-- 仅当用户未主动离开底部时，才启用自动滚动
-- 通过滚动距离阈值判断（< 100px）
-- 在 flush 阶段触发滚动，降低频率
-
-## 技术细节
-
-## API 接口
-
-### POST /api/chat
-
-请求体：
-
-```json
-{
-  "messages": [
-    {
-      "role": "user",
-      "content": "你好"
-    }
-  ]
-}
-```
-
-响应：SSE 流式响应
-
-```
-data: {"choices":[{"delta":{"content":"你"}}]}
-
-data: {"choices":[{"delta":{"content":"好"}}]}
-
-data: [DONE]
-```
-
-## 开发说明
-
-### 修改流式输出节奏
-
-编辑 `src/services/streamParser.js`：
-
-```javascript
-// 修改 flush 间隔（默认 50ms）
-this.flushInterval = setInterval(() => {
-  this.flushChunk();
-}, 50);
-
-// 修改每次 flush 的字符数（默认 8 个字符）
-const chunkSize = Math.min(8, this.renderBuffer.length);
-```
-
-### 修改滚动阈值
-
-编辑 `src/context/Context.jsx`：
-
-```javascript
-// 修改滚动距离阈值（默认 100px）
-const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-```
-
-### 修改 AI 模型参数
-
-编辑 `server.js`：
-
-```javascript
-const requestBody = {
-  model: "xop3qwen1b7",
-  messages: messages,
-  max_tokens: 4000,
-  temperature: 0.7,
-  stream: true,
-};
-```
-
-```
-
-## 许可证
-
-本项目采用 MIT 许可证。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 技术参考
-
-- [流式对话渲染模块设计](https://www.yuque.com/guluguluwater-qkq0t/otcxaz/pihgy9hz1r2tpfth)
-- [讯飞星火 MaaS API](https://maas.xfyun.cn/modelService)
-- [ReadableStream API](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream)
-```
+- 选择自研轻量 Planner–Executor–Evaluator，而不是为了框架名接入 LangGraph，便于在有限周期内讲清 Agent 循环和事件协议。
+- 不实现多 Agent、MCP、联网搜索和账号系统，首版聚焦“导入资料 → 计划 → 多轮检索 → 引用报告”的完整业务闭环。
+- 讯飞 Rerank 不可用时允许降级为向量排序；Embedding 未配置时拒绝建立伪语义索引并返回可恢复错误。
+- 当前 Markdown 与高亮依赖仍使主包超过 500 KB，后续可通过懒加载进一步拆包。

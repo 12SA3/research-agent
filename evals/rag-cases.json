@@ -1,0 +1,22 @@
+[
+  { "id": "case-01", "query": "核心技术栈是什么", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-02", "query": "项目中如何处理流式响应", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-03", "query": "知识库采用了什么存储", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-04", "query": "如何实现生成中断", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-05", "query": "长期记忆保存了哪些信息", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-06", "query": "前端列表如何降低 DOM 开销", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-07", "query": "RAG 检索流程包含哪些阶段", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-08", "query": "项目使用哪个模型平台", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-09", "query": "Markdown 支持哪些能力", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-10", "query": "会话状态由什么管理", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-11", "query": "文档是怎样分块的", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-12", "query": "精排失败后怎样降级", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-13", "query": "Agent 最多循环多少轮", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-14", "query": "语音输入使用什么浏览器能力", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-15", "query": "服务端为什么没有使用 Express", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-16", "query": "上下文超长时如何处理", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-17", "query": "工具调用结果怎样返回模型", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-18", "query": "知识库数据重启后是否保留", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-19", "query": "自动滚动在什么情况下暂停", "relevantDocumentTitles": ["xiaotu.md"] },
+  { "id": "case-20", "query": "代码高亮采用什么库", "relevantDocumentTitles": ["xiaotu.md"] }
+]
