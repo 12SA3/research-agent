@@ -1,9 +1,10 @@
-# InkMind Research — 可观测知识研究 Agent
+# InkMind — 对话与可观测知识研究 Agent
 
-一个面向多文档研究场景的 AI Agent 工作台。用户导入 PDF、Markdown 或 TXT 后，系统会生成可编辑研究计划，通过工具调用检索知识库，并流式生成带原文引用的结构化报告。
+一个同时支持普通多轮对话与多文档知识研究的 AI 工作台。用户可在低门槛 Chat 模式中快速问答，也可以导入 PDF、Markdown 或 TXT，在 Research 模式中生成可编辑研究计划，通过 Agent 工具调用检索知识库，并流式生成带原文引用的结构化报告。
 
 ## 核心能力
 
+- **双模式工作区**：普通 Chat 支持多会话、本地持久化、上下文对话、流式输出和停止生成；Research 聚焦私有知识研究，两种模式切换时保留各自状态。
 - **服务端 Agent 编排**：DeepSeek 负责 Planner、原生 Function Calling、证据评估与报告生成，浏览器只消费类型化事件。
 - **多阶段 RAG**：讯飞 Embedding → LanceDB Top-20 向量召回 → 讯飞 Rerank Top-5，精排失败自动降级。
 - **可追溯引用**：每条证据保留文档、页码、chunk ID、向量分数和精排分数，可在前端查看原文。
@@ -15,7 +16,8 @@
 
 ```mermaid
 flowchart LR
-  UI["React 研究工作区"] -->|"计划确认 / SSE"| API["Node.js + Express"]
+  CHAT["React 普通 Chat"] -->|"多轮消息 / SSE"| API["Node.js + Express"]
+  UI["React 研究工作区"] -->|"计划确认 / 类型化 SSE"| API
   API --> DS["DeepSeek Chat API\nPlanner / Tool Calls / Report"]
   API --> XF["讯飞 Embedding + Rerank"]
   API --> LD["LanceDB research_chunks_v1"]
@@ -57,7 +59,7 @@ npm run server
 npm run dev
 ```
 
-浏览器打开 `http://localhost:5173`。上传文档会调用真实 Embedding 并写入 `data/research-v1`；该目录和密钥均不会提交到 Git。
+浏览器打开 `http://localhost:5173`，可在“普通对话 / 知识研究”之间切换。普通对话记录保存在浏览器 localStorage 中且不会检索知识库；研究模式上传文档会调用真实 Embedding 并写入 `data/research-v1`，该目录和密钥均不会提交到 Git。
 
 如果 3001 端口仍运行旧版 `node server.js`，请先在原终端按 `Ctrl+C` 停止，再执行新的 `npm run server`；新版 `/health` 会返回 `service: "knowledge-research-agent"`。
 
@@ -73,7 +75,7 @@ npm run dev
 | POST | `/api/research/runs` | 确认计划并启动 SSE 研究任务 |
 | POST | `/api/research/runs/:runId/cancel` | 中止研究任务 |
 | GET | `/api/knowledge/search?q=` | 只读检索与评测接口 |
-| POST | `/api/chat` | 保留的普通 DeepSeek 流式对话接口 |
+| POST | `/api/chat` | 普通 DeepSeek 多轮流式对话接口，支持客户端中止 |
 
 ## ResearchEvent
 

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { config } from "./src/server/config.js";
 import { DocumentStore } from "./src/server/documents/documentStore.js";
 import { DeepSeekProvider } from "./src/server/providers/deepseek.js";
+import type { ChatMessage } from "./src/server/providers/types.js";
 import { XunfeiRagProvider } from "./src/server/providers/xunfei.js";
 import { ResearchAgent } from "./src/server/research/researchAgent.js";
 import { createPlanRequestSchema, runResearchRequestSchema } from "./src/server/research/schemas.js";
@@ -130,17 +131,51 @@ app.post("/api/research/runs/:runId/cancel", (request, response) => {
 });
 
 app.post("/api/chat", async (request: Request, response: Response, next) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("对话生成超过 90 秒")), 90_000);
+  request.on("aborted", () => controller.abort(new Error("客户端已断开")));
+  response.on("close", () => {
+    if (!response.writableEnded) controller.abort(new Error("客户端已断开"));
+  });
+
   try {
+    const allowedRoles = new Set<ChatMessage["role"]>(["system", "user", "assistant"]);
+    const rawMessages: unknown[] = Array.isArray(request.body?.messages) ? request.body.messages : [];
+    const messages: ChatMessage[] = rawMessages
+      .filter((message: unknown): message is { role: ChatMessage["role"]; content: string } => {
+        if (!message || typeof message !== "object") return false;
+        const candidate = message as { role?: unknown; content?: unknown };
+        return typeof candidate.role === "string"
+          && allowedRoles.has(candidate.role as ChatMessage["role"])
+          && typeof candidate.content === "string"
+          && candidate.content.trim().length > 0;
+      })
+      .slice(-31)
+      .map(({ role, content }) => ({ role, content: content.slice(0, 20_000) }));
+    if (!messages.some((message) => message.role === "user")) {
+      return response.status(400).json({ error: "至少需要一条用户消息" });
+    }
+
     response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    response.setHeader("Cache-Control", "no-cache");
-    const messages = Array.isArray(request.body.messages) ? request.body.messages : [];
-    for await (const delta of deepseek.streamText(messages)) {
+    response.setHeader("Cache-Control", "no-cache, no-transform");
+    response.setHeader("X-Accel-Buffering", "no");
+    for await (const delta of deepseek.streamText(messages, controller.signal)) {
       response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`);
     }
     response.write("data: [DONE]\n\n");
     response.end();
   } catch (error) {
-    next(error);
+    if (controller.signal.aborted) {
+      if (!response.writableEnded) response.end();
+    } else if (response.headersSent) {
+      const message = error instanceof Error ? error.message : "对话生成失败";
+      response.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+      response.end();
+    } else {
+      next(error);
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 });
 

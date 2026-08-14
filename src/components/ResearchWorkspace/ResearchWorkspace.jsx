@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { BookOpen, Check, ChevronRight, FileText, Menu, PanelRight, Play, Plus, Search, Square, Trash2, Upload, X } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
+import WorkspaceModeSwitch from "../WorkspaceModeSwitch/WorkspaceModeSwitch";
 import { initialResearchState, researchReducer } from "./researchReducer";
 import "./ResearchWorkspace.css";
 
@@ -15,7 +16,7 @@ async function getError(response) {
   }
 }
 
-function ResearchWorkspace() {
+function ResearchWorkspace({ onModeChange }) {
   const [documents, setDocuments] = useState([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState([]);
   const [question, setQuestion] = useState("");
@@ -147,7 +148,7 @@ function ResearchWorkspace() {
     <main className="research-shell">
       <header className="mobile-header">
         <button className="icon-control" onClick={() => setLeftOpen(true)} aria-label="打开文档库"><Menu size={20} /></button>
-        <strong>InkMind Research</strong>
+        <WorkspaceModeSwitch mode="research" onChange={onModeChange} compact />
         <button className="icon-control" onClick={() => setRightOpen(true)} aria-label="打开执行时间线"><PanelRight size={20} /></button>
       </header>
 
@@ -184,6 +185,7 @@ function ResearchWorkspace() {
       <section className="research-main">
         <div className="workspace-topbar">
           <div><span className="eyebrow">AI knowledge researcher</span><h2>知识研究工作台</h2></div>
+          <WorkspaceModeSwitch mode="research" onChange={onModeChange} />
           <div className={`run-status status-${state.status}`}><span />{statusLabel}</div>
         </div>
 
