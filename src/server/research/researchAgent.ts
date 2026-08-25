@@ -21,6 +21,13 @@ const SEARCH_TOOL: ToolDefinition = {
 
 type EventWriter = (type: ResearchEvent["type"], payload: Record<string, unknown>) => void;
 
+export type ResearchExecutionResult = {
+  report: string;
+  citations: Citation[];
+  searchCount: number;
+  invalidCitationIds: string[];
+};
+
 export class ResearchAgent {
   constructor(private chat: ChatProvider, private documents: DocumentStore) {}
 
@@ -40,13 +47,19 @@ export class ResearchAgent {
     return { id: randomUUID(), question, documentIds, steps: parsed.steps };
   }
 
-  async run(plan: ResearchPlan, response: Response, signal: AbortSignal): Promise<void> {
+  async run(
+    plan: ResearchPlan,
+    response: Response,
+    signal: AbortSignal,
+    onEvent?: (event: ResearchEvent) => void,
+  ): Promise<ResearchExecutionResult> {
     const runId = response.locals.runId as string;
     let sequence = 0;
     const write: EventWriter = (type, payload) => {
       if (response.writableEnded) return;
       const event: ResearchEvent = { runId, sequence: ++sequence, timestamp: new Date().toISOString(), type, payload };
       response.write(`data: ${JSON.stringify(event)}\n\n`);
+      onEvent?.(event);
     };
 
     const citations = new Map<string, Citation>();
@@ -152,5 +165,11 @@ export class ResearchAgent {
       });
     }
     write("run.completed", { citationCount: citations.size, searchCount, invalidCitationIds });
+    return {
+      report: generatedReport,
+      citations: [...citations.values()],
+      searchCount,
+      invalidCitationIds,
+    };
   }
 }

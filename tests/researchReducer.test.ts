@@ -21,4 +21,28 @@ describe("researchReducer", () => {
     state = researchReducer(state, { type: "event", event: event(2, "citation.collected", { citation }) });
     expect(state.citations).toHaveLength(1);
   });
+
+  it("可以从持久化的运行记录恢复报告、引用和时间线", () => {
+    const citation = { id: "c1", documentId: "d1", title: "文档", chunkId: "c1", excerpt: "证据", vectorScore: 0.8 };
+    const state = researchReducer(initialResearchState, {
+      type: "run.hydrate",
+      run: {
+        id: "run-1",
+        status: "completed",
+        plan: { id: "plan-1", question: "问题", documentIds: ["d1"], steps: [{ id: "s1", title: "步骤", query: "检索" }] },
+        report: "持久化报告",
+        citations: [citation],
+        events: [
+          event(1, "run.started", {}),
+          event(2, "step.started", { step: { id: "s1", title: "步骤", query: "检索" } }),
+          event(3, "step.completed", { stepId: "s1", citationCount: 1 }),
+          event(4, "run.completed", {}),
+        ],
+      },
+    });
+    expect(state.status).toBe("completed");
+    expect(state.report).toBe("持久化报告");
+    expect(state.citations).toEqual([citation]);
+    expect(state.timeline[0]).toMatchObject({ id: "step:s1", status: "completed" });
+  });
 });

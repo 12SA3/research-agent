@@ -6,8 +6,10 @@ import { DocumentStore } from "./src/server/documents/documentStore.js";
 import { DeepSeekProvider } from "./src/server/providers/deepseek.js";
 import type { ChatMessage } from "./src/server/providers/types.js";
 import { XunfeiRagProvider } from "./src/server/providers/xunfei.js";
+import { createBusinessStore } from "./src/server/persistence/index.js";
+import type { ResearchRunStatus } from "./src/server/persistence/types.js";
 import { ResearchAgent } from "./src/server/research/researchAgent.js";
-import { createPlanRequestSchema, runResearchRequestSchema } from "./src/server/research/schemas.js";
+import { chatPersistenceSchema, createPlanRequestSchema, runResearchRequestSchema } from "./src/server/research/schemas.js";
 
 const app = express();
 const upload = multer({
@@ -18,6 +20,7 @@ const deepseek = new DeepSeekProvider();
 const xunfei = new XunfeiRagProvider();
 const documents = new DocumentStore(xunfei, xunfei);
 const researchAgent = new ResearchAgent(deepseek, documents);
+const business = createBusinessStore();
 const activeRuns = new Map<string, AbortController>();
 
 app.use(express.json({ limit: "2mb" }));
@@ -38,27 +41,60 @@ app.get("/health", (_, response) => {
       embedding: Boolean(config.xunfei.apiKey && config.xunfei.embeddingModel),
       rerank: Boolean(config.xunfei.apiKey && config.xunfei.rerankModel),
     },
+    persistence: { provider: business.provider, persistent: business.persistent },
   });
+});
+
+app.get("/api/chat/sessions", async (_request, response, next) => {
+  try {
+    response.json({ sessions: await business.listChatSessions(), persistent: business.persistent });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/chat/sessions/:id", async (request, response, next) => {
+  try {
+    const removed = await business.deleteChatSession(request.params.id);
+    if (!removed) return response.status(404).json({ error: "会话不存在" });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/documents", (_, response) => response.json({ documents: documents.list() }));
 
 app.post("/api/documents", upload.array("files", 10), async (request, response, next) => {
+  const created = [];
   try {
     const files = request.files as Express.Multer.File[] | undefined;
     if (!files?.length) return response.status(400).json({ error: "请选择至少一个文件" });
-    const created = [];
-    for (const file of files) created.push(await documents.add(file));
+    for (const file of files) {
+      const document = await documents.add(file);
+      created.push(document);
+      await business.upsertDocument(document);
+    }
     response.status(201).json({ documents: created });
   } catch (error) {
+    for (const document of created) {
+      await Promise.allSettled([documents.remove(document.id), business.deleteDocument(document.id)]);
+    }
     next(error);
   }
 });
 
 app.delete("/api/documents/:id", async (request, response, next) => {
   try {
-    const removed = await documents.remove(request.params.id);
-    if (!removed) return response.status(404).json({ error: "文档不存在" });
+    const document = documents.list().find((item) => item.id === request.params.id);
+    if (!document) return response.status(404).json({ error: "文档不存在" });
+    await business.deleteDocument(document.id);
+    try {
+      await documents.remove(document.id);
+    } catch (error) {
+      await business.upsertDocument(document);
+      throw error;
+    }
     response.json({ success: true });
   } catch (error) {
     next(error);
@@ -86,8 +122,44 @@ app.post("/api/research/plans", async (request, response, next) => {
   }
 });
 
-app.post("/api/research/runs", async (request, response) => {
+app.get("/api/research/runs", async (request, response, next) => {
+  try {
+    const limit = Math.min(50, Math.max(1, Number(request.query.limit || 20)));
+    response.json({ runs: await business.listResearchRuns(limit), persistent: business.persistent });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/research/runs/:runId", async (request, response, next) => {
+  try {
+    const run = await business.getResearchRun(request.params.runId);
+    if (!run) return response.status(404).json({ error: "研究记录不存在" });
+    response.json({ run, persistent: business.persistent });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/research/runs/:runId", async (request, response, next) => {
+  try {
+    const removed = await business.deleteResearchRun(request.params.runId);
+    if (!removed) return response.status(404).json({ error: "研究记录不存在" });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/research/runs", async (request, response, next) => {
   const runId = typeof request.body?.runId === "string" ? request.body.runId : randomUUID();
+  let input;
+  try {
+    input = runResearchRequestSchema.parse({ ...request.body, runId });
+    await business.createResearchRun({ id: runId, question: input.question, plan: input.plan, documentIds: input.documentIds });
+  } catch (error) {
+    return next(error);
+  }
   response.locals.runId = runId;
   response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   response.setHeader("Cache-Control", "no-cache, no-transform");
@@ -103,19 +175,31 @@ app.post("/api/research/runs", async (request, response) => {
     if (!response.writableEnded) controller.abort(new Error("客户端已断开"));
   });
 
+  let lastSequence = 0;
+  let eventWriteQueue = Promise.resolve();
   try {
-    const input = runResearchRequestSchema.parse({ ...request.body, runId });
-    await researchAgent.run(input.plan, response, controller.signal);
+    const result = await researchAgent.run(input.plan, response, controller.signal, (event) => {
+      lastSequence = event.sequence;
+      if (event.type !== "text.delta") {
+        eventWriteQueue = eventWriteQueue.then(() => business.appendResearchEvent(event));
+      }
+    });
+    await eventWriteQueue;
+    await business.finishResearchRun(runId, "completed", result);
   } catch (error) {
     const cancelled = controller.signal.aborted;
+    const status: ResearchRunStatus = cancelled ? "cancelled" : "failed";
     const event = {
       runId,
-      sequence: Number.MAX_SAFE_INTEGER,
+      sequence: lastSequence + 1,
       timestamp: new Date().toISOString(),
-      type: cancelled ? "run.cancelled" : "run.failed",
+      type: status === "cancelled" ? "run.cancelled" as const : "run.failed" as const,
       payload: { message: error instanceof Error ? error.message : "研究任务失败" },
     };
     if (!response.writableEnded) response.write(`data: ${JSON.stringify(event)}\n\n`);
+    await eventWriteQueue.catch(() => undefined);
+    await business.appendResearchEvent(event).catch(() => undefined);
+    await business.finishResearchRun(runId, status, undefined, event.payload.message).catch(() => undefined);
   } finally {
     clearTimeout(timeout);
     activeRuns.delete(runId);
@@ -133,6 +217,8 @@ app.post("/api/research/runs/:runId/cancel", (request, response) => {
 app.post("/api/chat", async (request: Request, response: Response, next) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error("对话生成超过 90 秒")), 90_000);
+  let persistence: ReturnType<typeof chatPersistenceSchema.parse> | null = null;
+  let assistantText = "";
   request.on("aborted", () => controller.abort(new Error("客户端已断开")));
   response.on("close", () => {
     if (!response.writableEnded) controller.abort(new Error("客户端已断开"));
@@ -156,15 +242,48 @@ app.post("/api/chat", async (request: Request, response: Response, next) => {
       return response.status(400).json({ error: "至少需要一条用户消息" });
     }
 
+    persistence = request.body?.session ? chatPersistenceSchema.parse(request.body.session) : null;
+    if (persistence) {
+      const userContent = [...messages].reverse().find((message) => message.role === "user")?.content || "";
+      await business.upsertChatSession({ id: persistence.id, title: persistence.title, createdAt: persistence.createdAt });
+      await business.upsertChatMessage(persistence.id, {
+        id: persistence.userMessageId,
+        role: "user",
+        content: userContent,
+        status: "completed",
+      });
+      await business.upsertChatMessage(persistence.id, {
+        id: persistence.assistantMessageId,
+        role: "assistant",
+        content: "",
+        status: "generating",
+      });
+    }
+
     response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     response.setHeader("Cache-Control", "no-cache, no-transform");
     response.setHeader("X-Accel-Buffering", "no");
     for await (const delta of deepseek.streamText(messages, controller.signal)) {
+      assistantText += delta;
       response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`);
     }
+    if (persistence) await business.upsertChatMessage(persistence.id, {
+      id: persistence.assistantMessageId,
+      role: "assistant",
+      content: assistantText,
+      status: "completed",
+    });
     response.write("data: [DONE]\n\n");
     response.end();
   } catch (error) {
+    if (persistence) {
+      await business.upsertChatMessage(persistence.id, {
+        id: persistence.assistantMessageId,
+        role: "assistant",
+        content: assistantText,
+        status: controller.signal.aborted ? "aborted" : "failed",
+      }).catch(() => undefined);
+    }
     if (controller.signal.aborted) {
       if (!response.writableEnded) response.end();
     } else if (response.headersSent) {
@@ -191,7 +310,10 @@ app.use((error: unknown, _request: Request, response: Response, _next: express.N
 });
 
 await documents.init();
+await business.init();
+await business.syncDocuments(documents.list());
 app.listen(config.port, () => {
   console.log(`Knowledge Research Agent running on http://localhost:${config.port}`);
   console.log(`[Config] DeepSeek=${config.deepseek.model}, Embedding=${config.xunfei.embeddingModel || "未配置"}, Rerank=${config.xunfei.rerankModel || "未配置"}`);
+  console.log(`[Persistence] ${business.provider}${business.persistent ? "（持久化）" : "（内存降级，配置 DATABASE_URL 后启用 MySQL）"}`);
 });

@@ -35,8 +35,19 @@ type LocalAction =
   | { type: "plan.ready"; plan: ResearchPlan }
   | { type: "plan.update"; plan: ResearchPlan }
   | { type: "run.prepare"; runId: string }
+  | { type: "run.hydrate"; run: PersistedResearchRun }
   | { type: "local.error"; message: string }
   | { type: "reset" };
+
+type PersistedResearchRun = {
+  id: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  plan: ResearchPlan;
+  report: string;
+  citations: Citation[];
+  error?: string;
+  events: ResearchEvent[];
+};
 
 function upsertTimeline(items: TimelineItem[], next: TimelineItem): TimelineItem[] {
   const index = items.findIndex((item) => item.id === next.id);
@@ -51,6 +62,22 @@ export function researchReducer(state: ResearchState, action: LocalAction | { ty
   if (action.type === "plan.update") return { ...state, plan: action.plan };
   if (action.type === "run.prepare") {
     return { ...state, runId: action.runId, status: "running", report: "", citations: [], timeline: [], error: null, lastSequence: 0 };
+  }
+  if (action.type === "run.hydrate") {
+    let restored: ResearchState = {
+      ...initialResearchState,
+      runId: action.run.id,
+      plan: action.run.plan,
+      status: "running",
+    };
+    for (const event of action.run.events) restored = researchReducer(restored, { type: "event", event });
+    return {
+      ...restored,
+      status: action.run.status,
+      report: action.run.report || restored.report,
+      citations: action.run.citations.length ? action.run.citations : restored.citations,
+      error: action.run.error || restored.error,
+    };
   }
   if (action.type === "local.error") return { ...state, status: "failed", error: action.message };
 

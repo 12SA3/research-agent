@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { BookOpen, Check, ChevronRight, FileText, Menu, PanelRight, Play, Plus, Search, Square, Trash2, Upload, X } from "lucide-react";
+import { BookOpen, Check, ChevronRight, FileText, History, Menu, PanelRight, Play, Plus, Search, Square, Trash2, Upload, X } from "lucide-react";
 import MarkdownRenderer from "../MarkdownRenderer/MarkdownRenderer";
 import WorkspaceModeSwitch from "../WorkspaceModeSwitch/WorkspaceModeSwitch";
 import { initialResearchState, researchReducer } from "./researchReducer";
 import "./ResearchWorkspace.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+const LAST_RUN_KEY = "inkmind-last-research-run-id";
 
 async function getError(response) {
   try {
@@ -21,6 +22,9 @@ function ResearchWorkspace({ onModeChange }) {
   const [selectedDocumentIds, setSelectedDocumentIds] = useState([]);
   const [question, setQuestion] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [researchRuns, setResearchRuns] = useState([]);
+  const [databasePersistent, setDatabasePersistent] = useState(false);
+  const [loadingRunId, setLoadingRunId] = useState(null);
   const [selectedCitation, setSelectedCitation] = useState(null);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
@@ -36,9 +40,42 @@ function ResearchWorkspace({ onModeChange }) {
     setSelectedDocumentIds((current) => current.filter((id) => data.documents.some((document) => document.id === id)));
   }, []);
 
+  const loadResearchRun = useCallback(async (runId) => {
+    setLoadingRunId(runId);
+    try {
+      const response = await fetch(`${API_BASE}/api/research/runs/${runId}`);
+      if (!response.ok) throw new Error(await getError(response));
+      const { run, persistent } = await response.json();
+      setDatabasePersistent(Boolean(persistent));
+      setQuestion(run.question);
+      setSelectedDocumentIds(run.documentIds || []);
+      dispatch({ type: "run.hydrate", run });
+      localStorage.setItem(LAST_RUN_KEY, run.id);
+      setLeftOpen(false);
+    } catch (error) {
+      dispatch({ type: "local.error", message: error.message });
+    } finally {
+      setLoadingRunId(null);
+    }
+  }, []);
+
+  const loadResearchRuns = useCallback(async (restoreLast = false) => {
+    const response = await fetch(`${API_BASE}/api/research/runs?limit=12`);
+    if (!response.ok) throw new Error(await getError(response));
+    const data = await response.json();
+    setResearchRuns(data.runs || []);
+    setDatabasePersistent(Boolean(data.persistent));
+    const lastRunId = restoreLast ? localStorage.getItem(LAST_RUN_KEY) : null;
+    if (lastRunId && data.runs?.some((run) => run.id === lastRunId)) await loadResearchRun(lastRunId);
+  }, [loadResearchRun]);
+
   useEffect(() => {
     loadDocuments().catch((error) => dispatch({ type: "local.error", message: error.message }));
   }, [loadDocuments]);
+
+  useEffect(() => {
+    loadResearchRuns(true).catch((error) => dispatch({ type: "local.error", message: error.message }));
+  }, [loadResearchRuns]);
 
   const createPlan = async () => {
     if (!question.trim()) return;
@@ -62,6 +99,7 @@ function ResearchWorkspace({ onModeChange }) {
     const runId = crypto.randomUUID();
     const controller = new AbortController();
     streamControllerRef.current = controller;
+    localStorage.setItem(LAST_RUN_KEY, runId);
     dispatch({ type: "run.prepare", runId });
     try {
       const response = await fetch(`${API_BASE}/api/research/runs`, {
@@ -94,6 +132,7 @@ function ResearchWorkspace({ onModeChange }) {
       if (error.name !== "AbortError") dispatch({ type: "local.error", message: error.message });
     } finally {
       streamControllerRef.current = null;
+      loadResearchRuns().catch(() => undefined);
     }
   };
 
@@ -162,7 +201,7 @@ function ResearchWorkspace({ onModeChange }) {
           {uploading ? <span className="spinner" /> : <Upload size={18} />}
           {uploading ? "解析并建立索引…" : "导入 PDF / MD / TXT"}
         </button>
-        <p className="panel-hint">单文件最大 10 MB，一次最多 10 个。上传内容仅保存在本机。</p>
+        <p className="panel-hint">单文件最大 10 MB，一次最多 10 个。原文片段和向量保存在本机 LanceDB。</p>
         <div className="document-list">
           {documents.length === 0 ? (
             <div className="empty-card"><FileText size={24} /><p>还没有资料</p><span>导入几份技术文档或岗位 JD 开始研究</span></div>
@@ -179,7 +218,27 @@ function ResearchWorkspace({ onModeChange }) {
             );
           })}
         </div>
-        <div className="provider-note"><span className="status-dot" /> DeepSeek · 讯飞语义检索</div>
+        <section className="research-history" aria-labelledby="research-history-title">
+          <div className="history-heading"><div><History size={15} /><h2 id="research-history-title">最近研究</h2></div><span>{researchRuns.length}</span></div>
+          {researchRuns.length === 0 ? <p className="panel-hint">完成研究后，可从这里恢复计划、时间线和报告。</p> : (
+            <div className="research-history-list">
+              {researchRuns.map((run) => (
+                <button
+                  key={run.id}
+                  type="button"
+                  className={run.id === state.runId ? "active" : ""}
+                  onClick={() => loadResearchRun(run.id)}
+                  disabled={state.status === "running" || loadingRunId === run.id}
+                  aria-current={run.id === state.runId ? "page" : undefined}
+                >
+                  <span>{loadingRunId === run.id ? "正在恢复…" : run.question}</span>
+                  <small>{({ running: "执行中", completed: "已完成", failed: "失败", cancelled: "已中止" })[run.status]} · {run.citationCount} 条引用</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+        <div className="provider-note"><span className="status-dot" /> {databasePersistent ? "MySQL 业务数据 · LanceDB 向量" : "内存记录 · LanceDB 向量"}</div>
       </aside>
 
       <section className="research-main">

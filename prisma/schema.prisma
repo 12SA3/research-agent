@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id           String        @id @db.VarChar(36)
+  displayName  String        @map("display_name") @db.VarChar(80)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  chatSessions ChatSession[]
+  documents    Document[]
+  researchRuns ResearchRun[]
+
+  @@map("users")
+}
+
+model ChatSession {
+  id        String        @id @db.VarChar(36)
+  userId    String        @map("user_id") @db.VarChar(36)
+  title     String        @db.VarChar(191)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String      @id @db.VarChar(36)
+  sessionId String      @map("session_id") @db.VarChar(36)
+  role      String      @db.VarChar(16)
+  content   String      @db.LongText
+  status    String      @db.VarChar(16)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+model Document {
+  id             String                @id @db.VarChar(36)
+  userId         String                @map("user_id") @db.VarChar(36)
+  title          String                @db.VarChar(255)
+  type           String                @db.VarChar(16)
+  pages          Int
+  chunksCount    Int                   @map("chunks_count")
+  status         String                @db.VarChar(16)
+  embeddingModel String                @map("embedding_model") @db.VarChar(191)
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researchRuns   ResearchRunDocument[]
+
+  @@index([userId, createdAt])
+  @@map("documents")
+}
+
+model ResearchRun {
+  id                 String                @id @db.VarChar(36)
+  userId             String                @map("user_id") @db.VarChar(36)
+  question           String                @db.Text
+  plan               Json
+  documentIds        Json                  @map("document_ids")
+  status             String                @db.VarChar(16)
+  report             String?               @db.LongText
+  error              String?               @db.Text
+  searchCount        Int                   @default(0) @map("search_count")
+  invalidCitationIds Json?                 @map("invalid_citation_ids")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  completedAt        DateTime?             @map("completed_at")
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents          ResearchRunDocument[]
+  events             ResearchEvent[]
+  citations          ResearchCitation[]
+
+  @@index([userId, createdAt])
+  @@index([status, updatedAt])
+  @@map("research_runs")
+}
+
+model ResearchRunDocument {
+  runId      String      @map("run_id") @db.VarChar(36)
+  documentId String      @map("document_id") @db.VarChar(36)
+  run        ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  document   Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([runId, documentId])
+  @@index([documentId])
+  @@map("research_run_documents")
+}
+
+model ResearchEvent {
+  id        BigInt      @id @default(autoincrement()) @db.UnsignedBigInt
+  runId     String      @map("run_id") @db.VarChar(36)
+  sequence  Int
+  type      String      @db.VarChar(40)
+  payload   Json
+  timestamp DateTime
+  run       ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+  @@index([runId, timestamp])
+  @@map("research_events")
+}
+
+model ResearchCitation {
+  id          String      @id @db.VarChar(36)
+  runId       String      @map("run_id") @db.VarChar(36)
+  citationId  String      @map("citation_id") @db.VarChar(100)
+  documentId  String      @map("document_id") @db.VarChar(36)
+  title       String      @db.VarChar(255)
+  page        Int?
+  chunkId     String      @map("chunk_id") @db.VarChar(100)
+  excerpt     String      @db.LongText
+  vectorScore Float       @map("vector_score") @db.Double
+  rerankScore Float?      @map("rerank_score") @db.Double
+  createdAt   DateTime    @default(now()) @map("created_at")
+  run         ResearchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, citationId])
+  @@index([runId])
+  @@index([documentId])
+  @@map("research_citations")
+}

@@ -161,6 +161,48 @@ button:disabled { cursor: not-allowed; opacity: .46; }
 .document-copy small { color: var(--text-muted); font-size: 11px; }
 .delete-control { position: absolute; top: 10px; right: 3px; min-width: 40px; min-height: 40px; color: var(--text-muted); }
 .delete-control:hover { background: var(--danger-soft); color: var(--danger); }
+.research-history {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--ink-border);
+}
+.history-heading,
+.history-heading > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.history-heading h2 { font-size: 13px; font-weight: 700; }
+.history-heading > span { color: var(--text-muted); font-size: 11px; }
+.research-history .panel-hint { margin-bottom: 0; }
+.research-history-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.research-history-list button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+.research-history-list button:hover:not(:disabled) { background: var(--ink-hover); }
+.research-history-list button.active { border-color: var(--primary-border); background: var(--primary-soft); }
+.research-history-list button > span {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.research-history-list button small { color: var(--text-muted); font-size: 10px; }
 .provider-note { margin-top: auto; padding-top: 22px; display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
 

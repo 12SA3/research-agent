@@ -35,3 +35,11 @@ export const evaluationSchema = z.object({
   sufficient: z.boolean(),
   additionalQueries: z.array(z.string().min(2).max(300)).max(2).default([]),
 });
+
+export const chatPersistenceSchema = z.object({
+  id: z.string().min(1).max(64),
+  title: z.string().min(1).max(191),
+  createdAt: z.string().datetime().optional(),
+  userMessageId: z.string().min(1).max(64),
+  assistantMessageId: z.string().min(1).max(64),
+});

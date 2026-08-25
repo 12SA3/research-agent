@@ -51,6 +51,15 @@ function loadWorkspace() {
   }
 }
 
+function normalizeServerSessions(sessions) {
+  return sessions.map((session) => ({
+    ...session,
+    messages: (session.messages || []).map((message) => message.status === "generating"
+      ? { ...message, status: "aborted" }
+      : message),
+  }));
+}
+
 async function getError(response) {
   try {
     const data = await response.json();
@@ -88,6 +97,7 @@ function ChatWorkspace({ onModeChange }) {
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [databasePersistent, setDatabasePersistent] = useState(false);
   const controllerRef = useRef(null);
   const textareaRef = useRef(null);
   const scrollRef = useRef(null);
@@ -106,6 +116,29 @@ function ChatWorkspace({ onModeChange }) {
       // 浏览器禁用或配额不足时仍允许当前会话继续使用。
     }
   }, [workspace]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/chat/sessions`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json();
+      })
+      .then((data) => {
+        setDatabasePersistent(Boolean(data.persistent));
+        if (!data.persistent || !Array.isArray(data.sessions) || !data.sessions.length) return;
+        const serverSessions = normalizeServerSessions(data.sessions);
+        setWorkspace((current) => {
+          const serverIds = new Set(serverSessions.map((session) => session.id));
+          const sessions = [...serverSessions, ...current.sessions.filter((session) => !serverIds.has(session.id))];
+          return { sessions, activeId: sessions.some((session) => session.id === current.activeId) ? current.activeId : sessions[0].id };
+        });
+      })
+      .catch((caught) => {
+        if (caught.name !== "AbortError") setError("MySQL 会话暂时不可用，已继续使用本地缓存");
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     if (!isAtBottom) return undefined;
@@ -155,6 +188,13 @@ function ChatWorkspace({ onModeChange }) {
         activeId: current.activeId === sessionId ? remaining[0].id : current.activeId,
       };
     });
+    if (databasePersistent) {
+      fetch(`${API_BASE}/api/chat/sessions/${sessionId}`, { method: "DELETE" })
+        .then(async (response) => {
+          if (!response.ok && response.status !== 404) throw new Error(await getError(response));
+        })
+        .catch((caught) => setError(caught.message || "服务端会话删除失败"));
+    }
   };
 
   const sendMessage = async () => {
@@ -165,6 +205,7 @@ function ChatWorkspace({ onModeChange }) {
     const userMessage = { id: crypto.randomUUID(), role: "user", content: prompt, status: "completed" };
     const assistantId = crypto.randomUUID();
     const assistantMessage = { id: assistantId, role: "assistant", content: "", status: "generating" };
+    const sessionTitle = activeSession.messages.length ? activeSession.title : prompt.slice(0, 24);
     const apiMessages = [
       {
         role: "system",
@@ -179,7 +220,7 @@ function ChatWorkspace({ onModeChange }) {
 
     updateSession(sessionId, (session) => ({
       ...session,
-      title: session.messages.length ? session.title : prompt.slice(0, 24),
+      title: sessionTitle,
       messages: [...session.messages, userMessage, assistantMessage],
     }));
     setInput("");
@@ -212,7 +253,16 @@ function ChatWorkspace({ onModeChange }) {
       const response = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({
+          messages: apiMessages,
+          session: {
+            id: sessionId,
+            title: sessionTitle,
+            createdAt: activeSession.createdAt,
+            userMessageId: userMessage.id,
+            assistantMessageId: assistantId,
+          },
+        }),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error(await getError(response));
@@ -301,7 +351,7 @@ function ChatWorkspace({ onModeChange }) {
             </article>
           ))}
         </div>
-        <div className="provider-note"><span className="status-dot" /> DeepSeek · 流式对话</div>
+        <div className="provider-note"><span className="status-dot" /> DeepSeek · {databasePersistent ? "MySQL 会话已同步" : "本地会话缓存"}</div>
       </aside>
 
       <section className="chat-main">

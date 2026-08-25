@@ -4,6 +4,7 @@ dotenv.config();
 
 export const config = {
   port: Number(process.env.PORT || 3001),
+  databaseUrl: process.env.DATABASE_URL || "",
   deepseek: {
     apiKey: process.env.DEEPSEEK_API_KEY || "",
     baseUrl: (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, ""),

@@ -6,10 +6,7 @@ module.exports = {
   plugins: ["react-refresh"],
   settings: { react: { version: "detect" } },
   ignorePatterns: [
-    "dist", "node_modules", "data",
-    "src/config/aiService.js", "src/config/gemini.js",
-    "src/context/Context.jsx", "src/services/streamParser.js", "src/services/toolRegistry.js", "src/services/skills.js",
-    "src/components/Main/**", "src/components/SideBar/**"
+    "dist", "node_modules", "data", "src/generated/prisma"
   ],
   overrides: [
     {
