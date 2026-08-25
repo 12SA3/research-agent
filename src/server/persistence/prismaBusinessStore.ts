@@ -124,28 +124,34 @@ export class PrismaBusinessStore implements BusinessStore {
   }
 
   async upsertDocument(document: DocumentSummary): Promise<void> {
-    await this.prisma.document.upsert({
-      where: { id: document.id },
-      create: {
-        id: document.id,
-        userId: LOCAL_USER_ID,
-        title: document.title,
-        type: document.type,
-        pages: document.pages,
-        chunksCount: document.chunksCount,
-        status: document.status,
-        embeddingModel: document.embeddingModel,
-        createdAt: new Date(document.createdAt),
-      },
-      update: {
-        title: document.title,
-        type: document.type,
-        pages: document.pages,
-        chunksCount: document.chunksCount,
-        status: document.status,
-        embeddingModel: document.embeddingModel,
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.document.upsert({
+        where: { id: document.id },
+        create: {
+          id: document.id,
+          userId: LOCAL_USER_ID,
+          title: document.title,
+          type: document.type,
+          pages: document.pages,
+          chunksCount: document.chunksCount,
+          status: document.status,
+          embeddingModel: document.embeddingModel,
+          createdAt: new Date(document.createdAt),
+        },
+        update: {
+          title: document.title,
+          type: document.type,
+          pages: document.pages,
+          chunksCount: document.chunksCount,
+          status: document.status,
+          embeddingModel: document.embeddingModel,
+        },
+      }),
+      this.prisma.researchCitation.updateMany({
+        where: { documentId: document.id },
+        data: { title: document.title },
+      }),
+    ]);
   }
 
   async deleteDocument(documentId: string): Promise<void> {

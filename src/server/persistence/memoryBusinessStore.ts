@@ -58,6 +58,11 @@ export class MemoryBusinessStore implements BusinessStore {
 
   async upsertDocument(document: DocumentSummary): Promise<void> {
     this.documents.set(document.id, structuredClone(document));
+    for (const run of this.runs.values()) {
+      run.citations = run.citations.map((citation) => citation.documentId === document.id
+        ? { ...citation, title: document.title }
+        : citation);
+    }
   }
 
   async deleteDocument(documentId: string): Promise<void> {

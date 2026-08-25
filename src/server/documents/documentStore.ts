@@ -5,6 +5,7 @@ import path from "node:path";
 import type { Citation, DocumentSummary } from "../../shared/research.js";
 import type { EmbeddingProvider, RerankProvider } from "../providers/types.js";
 import { chunkPages } from "./chunking.js";
+import { normalizeUploadFilename } from "./filename.js";
 import { parseDocument } from "./parser.js";
 
 type Manifest = { version: 1; documents: DocumentSummary[] };
@@ -44,6 +45,15 @@ export class DocumentStore {
     }
     try {
       this.manifest = JSON.parse(await fs.readFile(MANIFEST_PATH, "utf8")) as Manifest;
+      const repairedDocuments = this.manifest.documents.map((document) => ({
+        ...document,
+        title: normalizeUploadFilename(document.title),
+      }));
+      if (repairedDocuments.some((document, index) => document.title !== this.manifest.documents[index].title)) {
+        this.manifest = { ...this.manifest, documents: repairedDocuments };
+        await this.persistManifest();
+        console.log("[KnowledgeBase] 已修复历史文档的中文文件名编码");
+      }
     } catch {
       await this.persistManifest();
     }
@@ -55,9 +65,10 @@ export class DocumentStore {
 
   async add(file: Express.Multer.File): Promise<DocumentSummary> {
     if (!this.db) throw new Error("文档库尚未初始化");
-    const parsed = await parseDocument(file.originalname, file.mimetype, file.buffer);
+    const fileName = normalizeUploadFilename(file.originalname);
+    const parsed = await parseDocument(fileName, file.mimetype, file.buffer);
     const chunks = chunkPages(parsed.pages);
-    if (!chunks.length) throw new Error(`${file.originalname} 未提取到可索引文本`);
+    if (!chunks.length) throw new Error(`${fileName} 未提取到可索引文本`);
 
     const documentId = randomUUID();
     const vectors = await this.embedding.embedDocuments(chunks.map((chunk) => chunk.content));
@@ -67,7 +78,7 @@ export class DocumentStore {
 
     const rows: ChunkRow[] = chunks.map((chunk, index) => ({
       document_id: documentId,
-      title: file.originalname,
+      title: fileName,
       document_type: parsed.type,
       page: chunk.page,
       chunk_id: `${documentId}:${chunk.index}`,
@@ -85,7 +96,7 @@ export class DocumentStore {
 
     const summary: DocumentSummary = {
       id: documentId,
-      title: file.originalname,
+      title: fileName,
       type: parsed.type,
       pages: parsed.pages.length,
       chunksCount: rows.length,
@@ -120,6 +131,7 @@ export class DocumentStore {
       .slice(0, 20)
       .map((row) => ({ ...row, vectorScore: Math.max(0, 1 - (row._distance || 0) / 2) }));
     if (!candidates.length) return [];
+    const titleByDocumentId = new Map(this.manifest.documents.map((document) => [document.id, document.title]));
 
     let ranked = candidates.map((candidate, index) => ({ candidate, index, rerankScore: undefined as number | undefined }));
     try {
@@ -136,7 +148,7 @@ export class DocumentStore {
     return ranked.slice(0, topK).map(({ candidate, rerankScore }) => ({
       id: candidate.chunk_id,
       documentId: candidate.document_id,
-      title: candidate.title,
+      title: titleByDocumentId.get(candidate.document_id) || normalizeUploadFilename(candidate.title),
       page: candidate.page,
       chunkId: candidate.chunk_id,
       excerpt: candidate.content,
